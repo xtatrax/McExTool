@@ -20,18 +20,19 @@
 import argparse
 import datetime
 import glob
+import hashlib
 import os
 import os.path
-import tarfile
-import time
-import dateutil.tz
-import schedule
 import subprocess
 import sys
+import tarfile
 import threading
-from watchdog.events import PatternMatchingEventHandler
-from watchdog.observers import Observer
+import time
 
+import dateutil.tz
+import schedule
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 version = '2.1.2'
 pyname = os.path.basename(__file__)
@@ -56,11 +57,10 @@ parser.add_argument('--savenum', help='[オプション]バックアップ保持
 parser.add_argument('--numdebug', help='[デバッグ]引数回バックアップ実行') 
 args = parser.parse_args()
 
-def mc_ex_command_arg_type(string):
-    if args.mcscname == None:
-        msg = "-c --mcexcommand は -m --mcscname オプションが指定されている必要があります。"
-        print(msg)
-        parser.print_help()
+if args.mcexcommand != None and args.mcscname == None:
+    msg = "-c --mcexcommand は -m --mcscname オプションが指定されている必要があります。"
+    print(msg)
+    parser.print_help()
     exit(1)
 
 # 出力ラッパー
@@ -240,57 +240,38 @@ def command_init():
     cmdList.add_command("help",command_help_func,
         "help             : このヘルプを表示します"
     )
-    
-class FileChangeHandler(PatternMatchingEventHandler):
 
-    def __init__(self, patterns):
-        super(FileChangeHandler, self).__init__(patterns=patterns)
-        self.mc_cmmand_header="$mc_ex_tool:"
+class ChangeHandler(FileSystemEventHandler):
+    def __init__(self,file):
+        self.FILENAME = file
+        debug_print("__init__ : "+self.FILENAME)
+        with open(self.FILENAME, 'rb') as f:
+            # 最後のイベント時でのファイルの md5 ハッシュ値を入れておく
+            self.oldmd5 = hashlib.md5(f.read()).hexdigest()
+            # 最後のイベント時でのファイルの pos 値を入れておく
+            self.pos = f.tell()
 
-    def check_mc_ex_command(self,filepath):
-        global is_backup_lock
-        if is_backup_lock:
-            return 
-        
-        with open(filepath,"r") as f:
-            lines = f.readlines()
-            lastLine= lines[-1]
-            
-            hd_pos = lastLine.find(self.mc_cmmand_header)
-            if hd_pos > -1:
-                cmd_txt = lastLine[hd_pos+len(self.mc_cmmand_header)-1 : -1] 
-                fspcmd = cmd_txt.lstrip()
-                fspcmdrsp = cmd_txt.rstrip()
-                fspcmdrsp
-                cmd = cmdList.get_command(fspcmdrsp)
-                if cmd != None:
-                    cmd.Action(True)
-                else:
-                    cmdList.get_command("help").Action(True)
-
-    # ファイル作成時のイベント
-    def on_created(self, event):
-        filepath = event.src_path
-        filename = os.path.basename(filepath)
-        debug_print('%s created' % filename)
-
-    # ファイル変更時のイベント
     def on_modified(self, event):
-        filepath = event.src_path
-        filename = os.path.basename(filepath)
-        debug_print('%s changed' % filename)
+        filename = os.path.basename(event.src_path)
+        debug_print('on_modified   : ' + self.FILENAME)
+        debug_print('on_m filename  : ' + filename)
+        debug_print('on_m event.path : ' + event.src_path)
+        if event.is_directory:
+            return
+        if filename in self.FILENAME:
+            # ファイルの中身の変更を確認するために md5 ハッシュを使う
+            with open(event.src_path, 'rb') as f:
+                mymd5 = hashlib.md5(f.read()).hexdigest()
+            if self.oldmd5 != mymd5:
+                self.oldmd5 = mymd5
+                print('%s' % event.src_path)
+            # ファイルに「追記」しか行わないものとする
+            with open(event.src_path, 'r') as f:
+                f.seek(self.pos)
+                dat = f.read()
+                print(dat)
+                self.pos = f.tell()
 
-    # ファイル削除時のイベント
-    def on_deleted(self, event):
-        filepath = event.src_path
-        filename = os.path.basename(filepath)
-        debug_print('%s deleted' % filename)
-
-    # ファイル移動時のイベント
-    def on_moved(self, event):
-        filepath = event.src_path
-        filename = os.path.basename(filepath)
-        debug_print('%s moved' % filename)
 
 def stdin_command_job(auto_thread,mc_command_thread):
     global job_running 
@@ -311,14 +292,12 @@ def mc_command_job():
     if args.mcexcommand != None:
         # ファイル監視の開始
         dfname=os.path.split(args.mcexcommand)
-        basedir= dfname[0]
-        filemame= dfname[1]
-        event_handler = FileChangeHandler([filemame])
+        event_handler = ChangeHandler(args.mcexcommand)
         observer = Observer()
-        observer.schedule(event_handler, basedir, recursive=True)
+        observer.schedule(event_handler, dfname[0], recursive=True)
         observer.start()
-        debug_print("basedir  : "+basedir)
-        debug_print("filemame : "+filemame)
+        debug_print("basedir  : "+dfname[0])
+        debug_print("filemame : "+dfname[1])
         debug_print("でmc_command_jobを開始")
         # 処理が終了しないようスリープを挟んで無限ループ
         global job_running 
