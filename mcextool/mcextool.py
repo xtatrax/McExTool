@@ -73,9 +73,11 @@ is_debug_mc_print=False
 
 mc_msg_header="[§bfrom "+pyname+" Ver"+version+"§r]"
 def debug_print(msg: str):
-    print("[DEBUG]"+msg)
+    if is_debug_print:
+        print("[DEBUG]"+msg)
 
 def mcmsg4screen_common(msg: str):
+    debug_print("[mcmsg4screen]"+msg)
     subprocess.call("screen -p 0 -S "+args.mcscname+" -X eval 'stuff \"say " + msg + "\"\015'", shell=True)
     
 def mcmsg4screen_debug(msg: str):
@@ -163,65 +165,72 @@ def autobackup_job():
 # コマンド一覧クラス
 class command_list():
     class com:
-        def __init__(self, command_name,command_action,command_help):
-            self.Name   = command_name
-            self.Action = command_action
-            self.Help   = command_help
+        def __init__(self, command_name,command_action,allow_mc,command_help):
+            self.Name    = command_name
+            self.Action  = command_action
+            self.Help    = command_help
+            self.AllowMc = allow_mc
 
     def __init__(self, ):
         self.cmmands={}
 
-    def add_command(self, command_name,command_action,command_help):
-        self.cmmands[command_name]=command_list.com(command_name,command_action,command_help)
+    def add_command(self, command_name,command_action,allow_mc,command_help):
+        self.cmmands[command_name]=command_list.com(command_name,command_action,allow_mc,command_help)
 
-    def get_command(self,command_name):
+    def get_command(self,command_name,ismc=False):
         if command_name in self.cmmands :
-            return self.cmmands[command_name]
-        else:
-            return None
+            command = self.cmmands[command_name]
+            if command.AllowMc ** ismc  :
+                return self.cmmands[command_name]
+        return None
 
-    def help(self,command_name=None):
+    def help(self,command_name=None,ismc=False):
         retlist=[]
-        if command_name != command_name :
+        if command_name != None :
+            print("command_name != None " + str(command_name))
             retlist.append(self.cmmands[command_name].Help)
         else :
             for k in self.cmmands:
-                retlist.append(self.cmmands[k].Help)
+                command=self.cmmands[k]
+                if command.AllowMc ** ismc :
+                    retlist.append(command.Help)
         return retlist
 
 
 cmdList = command_list()
 ex_rule = None
 def command_init():
-    def backup_func(mc_print_on=False):
+    def backup_func(mc_print_on=False, ismc=False):
         backup()
         return 0
-    cmdList.add_command("backup",backup_func,
+    cmdList.add_command("backup",backup_func, True,
         "backup          : backupを強制実行します。"
     )
 
     if args.rulefile != None:
         ex_rule = exrule.Additional_Rule(args.rulefile)
-        def random_rule_func(mc_print_on=False):
+        def random_rule_func(mc_print_on=False, ismc=False):
             mcmsg4screen(ex_rule.getRandRule())
             return 0
-        cmdList.add_command("rand_rule",random_rule_func,
+        cmdList.add_command("rand_rule",random_rule_func,True,
             "rand_rule       : 追加のルールをランダムに表示します。"
         )
 
 
-    def stop_func(mc_print_on=False):
+    def stop_func(mc_print_on=False, ismc=False):
         return 1
-    cmdList.add_command("stop",stop_func,
+    cmdList.add_command("stop",stop_func, False,
         "stop            : プロセスを終了します。"
     )
-    def stop_and_backup_func(mc_print_on=False):
+
+    def stop_and_backup_func(mc_print_on=False, ismc=False):
         backup()
         return 1
-    cmdList.add_command("stop_and_backup",stop_and_backup_func,
+    cmdList.add_command("stop_and_backup",stop_and_backup_func, False,
         "stop_and_backup : backupを強制実行した後にプロセスを終了します。"
     )
-    def debug_info_func(mc_print_on=False):
+
+    def debug_info_func(mc_print_on=False, ismc=False):
         global is_debug_print
         is_debug_print = not is_debug_print
         if is_debug_print:
@@ -229,31 +238,37 @@ def command_init():
         else:
             print("デバッグ情報表示はOFFです")
         return 0
-    cmdList.add_command("debug_info",debug_info_func,
+    cmdList.add_command("debug_info",debug_info_func, True,
         "debug_info      : デバッグ表示をON/OFFにします。"
     )
-    def debug_mc_info_func(mc_print_on=False):
+
+    def debug_mc_info_func(mc_print_on=False, ismc=False):
         if args.mcscname != None:
             global is_debug_mc_print
             is_debug_mc_print = not is_debug_mc_print
             if is_debug_mc_print:
-                print("マインクラフトでのデバッグ情報表示はONです。")
+                msg="マインクラフトでのデバッグ情報表示はONです。"
+                print(msg)
+                mcmsg4screen(msg)
             else:
-                print("マインクラフトでのデバッグ情報表示はOFFです。")
+                msg="マインクラフトでのデバッグ情報表示はOFFです。"
+                print(msg)
+                mcmsg4screen(msg)
         else:
             print("-m/--mcscname 情報が提供されている場合のみ有効です。")
         return 0
-    cmdList.add_command("debug_mc_info",debug_mc_info_func,
+    cmdList.add_command("debug_mc_info",debug_mc_info_func, True,
         "debug_mc_info   : マイクラ内デバッグ表示をON/OFFにします。"
     )
-    def command_help_func(mc_print_on=False):
-        help_list = cmdList.help()
+
+    def command_help_func(mc_print_on=False, ismc=False):
+        help_list = cmdList.help(None,ismc)
         for l in help_list:
             if mc_print_on :
                 mcmsg4screen(l)
             print(l)
         return 0
-    cmdList.add_command("help",command_help_func,
+    cmdList.add_command("help",command_help_func,True,
         "help             : このヘルプを表示します"
     )
     
@@ -290,9 +305,9 @@ class ChangeHandler(FileSystemEventHandler):
         print(usercmd[0][2:])
         cmd = cmdList.get_command(usercmd[0][2:])
         if cmd != None:
-            ret = cmd.Action()
+            ret = cmd.Action(ismc=True)
         else:
-            cmdList.get_command("help").Action(True)
+            cmdList.get_command("help",True).Action(True,True)
         if ret == 1:
             job_running=False
 
@@ -314,9 +329,14 @@ class ChangeHandler(FileSystemEventHandler):
             with open(event.src_path, 'r') as f:
                 f.seek(self.pos)
                 dat = f.read()
+                self.pos = f.tell()
+                f.seek(0, 2)
+                lastpos = f.tell()
+                if lastpos < self.pos:
+                     self.pos = lastpos
+
                 print(dat)
                 self.parse_command(dat)
-                self.pos = f.tell()
 
 
 def stdin_command_job(auto_thread,mc_command_thread):
