@@ -28,6 +28,7 @@ import sys
 import tarfile
 import threading
 import time
+import re
 
 import dateutil.tz
 import schedule
@@ -194,6 +195,15 @@ def command_init():
     cmdList.add_command("backup",backup_func,
         "backup          : backupを強制実行します。"
     )
+
+    def random_rule_func(mc_print_on=False):
+        print("test")
+        return 0
+    cmdList.add_command("rand_rule",random_rule_func,
+        "rand_rule       : 追加のルールをランダムに表示します。"
+    )
+
+
     def stop_func(mc_print_on=False):
         return 1
     cmdList.add_command("stop",stop_func,
@@ -240,6 +250,7 @@ def command_init():
     cmdList.add_command("help",command_help_func,
         "help             : このヘルプを表示します"
     )
+    
 
 class ChangeHandler(FileSystemEventHandler):
     def __init__(self,file):
@@ -250,6 +261,30 @@ class ChangeHandler(FileSystemEventHandler):
             self.oldmd5 = hashlib.md5(f.read()).hexdigest()
             # 最後のイベント時でのファイルの pos 値を入れておく
             self.pos = f.tell()
+
+    def parse_command(self,cmd: str):
+        if not cmd:
+            debug_print("null str")
+            return 
+        #[13:30:54] [Server thread/INFO]: <xtatrax> testtext てすとてきすとー
+        result = re.sub(r'^\[.*:\s', '', cmd)
+        result2 = re.sub(r'<.*>\s', '', result)
+        if result == result2:
+            debug_print("not user")
+            #ユーザー発言じゃない。
+            return
+        usercmd=result2.split()
+        print( usercmd[0][0:2])
+        if usercmd[0][0:2] != "@/":
+            #コマンドじゃない
+            debug_print("not command")
+            return
+        print(usercmd[0][2:])
+        cmd = cmdList.get_command(usercmd[0][2:])
+        if cmd != None:
+            ret = cmd.Action()
+        else:
+            cmdList.get_command("help").Action(True)
 
     def on_modified(self, event):
         filename = os.path.basename(event.src_path)
@@ -270,6 +305,7 @@ class ChangeHandler(FileSystemEventHandler):
                 f.seek(self.pos)
                 dat = f.read()
                 print(dat)
+                self.parse_command(dat)
                 self.pos = f.tell()
 
 
