@@ -35,7 +35,9 @@ import schedule
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-version = '2.1.2'
+import exrule
+
+version = '2.8.0'
 pyname = os.path.basename(__file__)
 
 # python 3.x 確認
@@ -54,6 +56,7 @@ parser.add_argument('-t', '--time', required=True, help='バックアップ間�
 parser.add_argument('-n', '--name', help='[オプション]バックアップ保存名') 
 parser.add_argument('-m', '--mcscname', default=None, help='[オプション]マインクラフトを動ごかしてるSCREEN名') 
 parser.add_argument('-c', '--mcexcommand', help='[オプション]マインクラフト log ファイルへのパス。：チャットからの入力に対応します。-m --mcscname オプションが指定されている必要があります。') 
+parser.add_argument('-r', '--rulefile', help='[オプション]縛りリストのパス(json)') 
 parser.add_argument('--savenum', help='[オプション]バックアップ保持数') 
 parser.add_argument('--numdebug', help='[デバッグ]引数回バックアップ実行') 
 args = parser.parse_args()
@@ -81,7 +84,8 @@ def mcmsg4screen_debug(msg: str):
 
 def mcmsg4screen(msg: str):
     if args.mcscname != None:
-        mcmsg4screen_common(mc_msg_header+" : " + msg)
+        #mcmsg4screen_common(mc_msg_header+" : " + msg)
+        mcmsg4screen_common(msg)
 
 # 古いバックアップ削除
 def listup(name):
@@ -187,7 +191,7 @@ class command_list():
 
 
 cmdList = command_list()
-
+ex_rule = None
 def command_init():
     def backup_func(mc_print_on=False):
         backup()
@@ -196,12 +200,14 @@ def command_init():
         "backup          : backupを強制実行します。"
     )
 
-    def random_rule_func(mc_print_on=False):
-        print("test")
-        return 0
-    cmdList.add_command("rand_rule",random_rule_func,
-        "rand_rule       : 追加のルールをランダムに表示します。"
-    )
+    if args.rulefile != None:
+        ex_rule = exrule.Additional_Rule(args.rulefile)
+        def random_rule_func(mc_print_on=False):
+            mcmsg4screen(ex_rule.getRandRule())
+            return 0
+        cmdList.add_command("rand_rule",random_rule_func,
+            "rand_rule       : 追加のルールをランダムに表示します。"
+        )
 
 
     def stop_func(mc_print_on=False):
@@ -263,6 +269,8 @@ class ChangeHandler(FileSystemEventHandler):
             self.pos = f.tell()
 
     def parse_command(self,cmd: str):
+        global job_running 
+        ret=0
         if not cmd:
             debug_print("null str")
             return 
@@ -285,6 +293,8 @@ class ChangeHandler(FileSystemEventHandler):
             ret = cmd.Action()
         else:
             cmdList.get_command("help").Action(True)
+        if ret == 1:
+            job_running=False
 
     def on_modified(self, event):
         filename = os.path.basename(event.src_path)
