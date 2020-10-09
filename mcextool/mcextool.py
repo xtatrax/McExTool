@@ -37,7 +37,7 @@ from watchdog.observers import Observer
 
 import exrule
 
-version = '2.8.0'
+version = '3.0.0'
 pyname = os.path.basename(__file__)
 
 # python 3.x 確認
@@ -79,6 +79,8 @@ def debug_print(msg: str):
 def mcmsg4screen_common(msg: str):
     debug_print("[mcmsg4screen]"+msg)
     subprocess.call("screen -p 0 -S "+args.mcscname+" -X eval 'stuff \"say " + msg + "\"\015'", shell=True)
+    #subprocess.call("screen -p 0 -S "+args.mcscname+" -X eval 'stuff \"tellraw @p { \"text\" : \"" + msg + " } \"\015'", shell=True)
+
     
 def mcmsg4screen_debug(msg: str):
     if is_debug_mc_print:
@@ -209,11 +211,26 @@ def command_init():
 
     if args.rulefile != None:
         ex_rule = exrule.Additional_Rule(args.rulefile)
-        def random_rule_func(mc_print_on=False, ismc=False):
+        def random_rule_func(mc_print_on=False, ismc=True):
             mcmsg4screen(ex_rule.getRandRule())
             return 0
         cmdList.add_command("rand_rule",random_rule_func,True,
-            "rand_rule       : 追加のルールをランダムに表示します。"
+            "rand_rule       : 縛りをランダムに表示します。"
+        )
+
+        def rule_list_reload_func(mc_print_on=False, ismc=True):
+            ex_rule.reload()
+            mcmsg4screen("縛りリストを再読込しました")
+            return 0
+        cmdList.add_command("reload_rule",rule_list_reload_func,True,
+            "reload_rule     : 縛りリストを再読込します。"
+        )
+
+        def random_penalty_func(mc_print_on=False, ismc=True):
+            mcmsg4screen(ex_rule.getRandPenalty())
+            return 0
+        cmdList.add_command("rand_penalty",random_penalty_func,True,
+            "rand_penalty     : 縛りリストを再読込します。"
         )
 
 
@@ -269,7 +286,7 @@ def command_init():
             print(l)
         return 0
     cmdList.add_command("help",command_help_func,True,
-        "help             : このヘルプを表示します"
+        "help            : このヘルプを表示します"
     )
     
 
@@ -305,7 +322,7 @@ class ChangeHandler(FileSystemEventHandler):
         print(usercmd[0][2:])
         cmd = cmdList.get_command(usercmd[0][2:])
         if cmd != None:
-            ret = cmd.Action(ismc=True)
+            ret = cmd.Action(True,True)
         else:
             cmdList.get_command("help",True).Action(True,True)
         if ret == 1:
